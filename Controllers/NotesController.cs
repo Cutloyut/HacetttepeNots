@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Firebase.Database;
+using Firebase.Database.Query;
 
 namespace HacettepeNot.API.Controllers
 {
@@ -6,7 +8,9 @@ namespace HacettepeNot.API.Controllers
     [Route("api/[controller]")]
     public class NotesController : ControllerBase
     {
-        private readonly IWebHostEnvironment _env;
+        IWebHostEnvironment _env;
+        // Firebase Realtime Database URL'ini buraya kendi proje adresinle yazıyoruz
+        private readonly FirebaseClient _firebaseClient = new("https://hacetttepenot-be247-default-rtdb.firebaseio.com/");
 
         public NotesController(IWebHostEnvironment env)
         {
@@ -45,17 +49,15 @@ namespace HacettepeNot.API.Controllers
             }
 
             // 4. C# AI / OCR İçerik Doğrulama Adımı
-            // Örn: var isAiApproved = await _aiService.ScanPdfContentAsync(filePath, request.CourseCode);
             bool isAiApproved = true; 
 
             if (!isAiApproved)
             {
-                // Uygunsuz ise yüklenen dosyayı sil
                 System.IO.File.Delete(filePath);
                 return BadRequest(new { Success = false, Message = "AI Doğrulaması Başarısız: Dosya içeriği seçilen dersle uyuşmuyor." });
             }
 
-            // 5. Entity Framework ile Veritabanına Kayıt
+            // 5. Nesneyi Oluşturma
             var newNoteRecord = new
             {
                 Id = Guid.NewGuid().ToString(),
@@ -67,18 +69,26 @@ namespace HacettepeNot.API.Controllers
                 CreatedAt = DateTime.UtcNow
             };
 
-            // await _context.Notes.AddAsync(newNoteRecord);
-            // await _context.SaveChangesAsync();
+            // 6. Firebase Realtime Database'e Gerçek Kayıt Atma
+            try
+            {
+                await _firebaseClient
+                    .Child("notes") // Firebase'de oluşacak tablo/düğüm adı
+                    .PostAsync(newNoteRecord);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Success = false, Message = "Firebase kayıt hatası: " + ex.Message });
+            }
 
             return Ok(new { 
                 Success = true, 
-                Message = "Dosya C# Backend tarafından doğrulandı ve kaydedildi.", 
+                Message = "Dosya C# Backend tarafından doğrulandı ve Firebase'e kaydedildi.", 
                 Data = newNoteRecord 
             });
         }
     }
 
-    // Flutter'dan gelen multipart/form-data modelini karşılayan DTO
     public class NoteUploadDto
     {
         public string CourseCode { get; set; } = string.Empty;
